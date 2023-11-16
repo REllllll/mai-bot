@@ -9,6 +9,15 @@ from src.libraries.image import *
 from src.libraries.maimai_best_40 import generate
 from src.libraries.maimai_best_50 import generate50
 import re
+import re
+import csv
+from collections import defaultdict
+
+with open("src/resources/aliases.csv", "r", encoding="utf-8") as f:
+    reader = csv.reader(f)
+    aliases = defaultdict(list)
+    for row in reader:
+        aliases[row[0]].append(row[1:])
 
 
 def song_txt(music: Music):
@@ -32,7 +41,7 @@ def inner_level_q(ds1, ds2=None):
         music_data = total_list.filter(ds=(ds1, ds2))
     else:
         music_data = total_list.filter(ds=ds1)
-    for music in sorted(music_data, key = lambda i: int(i['id'])):
+    for music in sorted(music_data, key=lambda i: int(i['id'])):
         for i in music.diff:
             result_set.append((music['id'], music['title'], music['ds'][i], diff_label[i], music['level'][i]))
     return result_set
@@ -112,7 +121,7 @@ async def _(event: Event, message: Message = EventMessage()):
         await search_music.send("没有找到这样的乐曲。")
     elif len(res) < 50:
         search_result = ""
-        for music in sorted(res, key = lambda i: int(i['id'])):
+        for music in sorted(res, key=lambda i: int(i['id'])):
             search_result += f"{music['id']}. {music['title']}\n"
         await search_music.finish(Message([
             MessageSegment("text", {
@@ -172,7 +181,7 @@ BREAK: {chart['notes'][4]}
         name = groups[1]
         music = total_list.by_id(name)
         try:
-            file =f"https://www.diving-fish.com/covers/{get_cover_len5_id(music['id'])}.png"
+            file = f"https://www.diving-fish.com/covers/{get_cover_len5_id(music['id'])}.png"
             await query_chart.send(Message([
                 MessageSegment("text", {
                     "text": f"{music['id']}. {music['title']}\n"
@@ -189,7 +198,6 @@ BREAK: {chart['notes'][4]}
 
 
 wm_list = ['拼机', '推分', '越级', '下埋', '夜勤', '练底力', '练手法', '打旧框', '干饭', '抓绝赞', '收歌']
-
 
 jrwm = on_command('今日舞萌', aliases={'今日mai'})
 
@@ -209,9 +217,10 @@ async def _(event: Event, message: Message = CommandArg()):
             s += f'宜 {wm_list[i]}\n'
         elif wm_value[i] == 0:
             s += f'忌 {wm_list[i]}\n'
-    s += "千雪提醒您：打机时不要大力拍打或滑动哦\n今日推荐歌曲："
+    s += "迪拉熊提醒您：打机时不要大力拍打或滑动哦\n今日推荐歌曲："
     music = total_list[h % len(total_list)]
     await jrwm.finish(Message([MessageSegment("text", {"text": s})] + song_txt(music)))
+
 
 query_score = on_command('分数线')
 
@@ -287,6 +296,7 @@ async def _(event: Event, message: Message = CommandArg()):
             })
         ]))
 
+
 best_50_pic = on_command('b50')
 
 
@@ -294,9 +304,9 @@ best_50_pic = on_command('b50')
 async def _(event: Event, message: Message = CommandArg()):
     username = str(message).strip()
     if username == "":
-        payload = {'qq': str(event.get_user_id()),'b50':True}
+        payload = {'qq': str(event.get_user_id()), 'b50': True}
     else:
-        payload = {'username': username,'b50':  True}
+        payload = {'username': username, 'b50': True}
     img, success = await generate50(payload)
     if success == 400:
         await best_50_pic.send("未找到此玩家，请确保此玩家的用户名和查分器中的用户名相同。")
@@ -308,3 +318,67 @@ async def _(event: Event, message: Message = CommandArg()):
                 "file": f"base64://{str(image_to_base64(img), encoding='utf-8')}"
             })
         ]))
+
+
+search_alias = on_regex(r"^(.+?)的别名")
+
+
+@search_alias.handle()
+async def _(event: Event, message: Message = EventMessage()):
+    """查找别名"""
+
+    regex = r"(.+?)的别名"
+    name = re.match(regex, str(message)).group(1)
+
+    # 在aliases中查找
+    if name in aliases:
+        result = []
+        for i in aliases[name]:
+            for x in i:
+                if x == "":
+                    pass
+                else:
+                    result.append(x + "\n")
+        await search_alias.finish(f"{name}的别名有：\n{''.join(result)}")
+    else:
+        await search_alias.finish(f"未找到{name}的别名")
+
+
+search_by_alias = on_regex(r"^(.+?)是什么歌")
+
+
+@search_by_alias.handle()
+async def _(event: Event, message: Message = EventMessage()):
+    """通过别名查找歌曲"""
+    regex = r"(.+?)是什么歌"
+    alias = re.match(regex, str(message)).group(1)
+    find = False
+    for name in aliases:
+        for i in aliases[name]:
+            if alias in i:
+                find = True
+                await search_by_alias.finish(f"{alias}是{name}的别名")
+    if not find:
+        await search_by_alias.finish(f"未找到{alias}的歌曲")
+
+
+add_alias = on_command('添加别名')
+
+
+@add_alias.handle()
+async def _(event: Event, message: Message = CommandArg()):
+    """添加别名"""
+
+    name, alias = re.match(r"'(.*)' '(.*)'", str(message)).groups()
+    if name in aliases:
+        aliases[name].append(alias)
+    else:
+        aliases[name] = [alias]
+    with open("src/resources/aliases.csv", "w", encoding="utf-8") as f:
+        # 添加到csv文件中，直接写入，不用csv库
+        for n in aliases:
+            for i in aliases[n]:
+                i = str(i).strip("[]")
+                i = str(i).replace("'", "")
+                f.write(f"{n},{i}\n")
+    await add_alias.finish(f"已添加{name}的别名{alias}")

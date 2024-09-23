@@ -1,4 +1,5 @@
-from nonebot import on_command, on_notice
+from nonebot import on_command, on_notice, on_message
+from nonebot.params import CommandArg, EventMessage
 from nonebot.typing import T_State
 from nonebot.adapters.onebot.v11 import Message, Event, Bot, MessageSegment
 from nonebot.exception import IgnoredException
@@ -44,3 +45,19 @@ async def _(bot: Bot, event: Event, state: T_State):
        })
     ]))
 
+
+counter = 0
+last_message = ''
+counter_detector = on_message()
+
+@counter_detector.handle()
+async def _(bot: Bot, event: Event, message: Message = EventMessage()):
+    if counter == 0:
+        counter += 1
+        last_message = str(message)
+    elif last_message == str(message):
+        counter += 1
+        if counter == 3:
+            await counter_detector.send(str(message))
+    else:
+        counter = 0

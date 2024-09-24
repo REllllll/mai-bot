@@ -5,6 +5,8 @@ from nonebot.adapters.onebot.v11 import Message, Event, Bot, MessageSegment
 from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
 from src.libraries.image import *
+import json
+import re
 from PIL import Image
 
 
@@ -46,18 +48,46 @@ async def _(bot: Bot, event: Event, state: T_State):
     ]))
 
 
-counter = 0
-last_message = ''
 counter_detector = on_message()
 
 @counter_detector.handle()
 async def _(bot: Bot, event: Event, message: Message = EventMessage()):
-    if counter == 0:
-        counter += 1
-        last_message = str(message)
-    elif last_message == str(message):
-        counter += 1
-        if counter == 3:
-            await counter_detector.send(str(message))
+    with open('src/resources/counter.json','r') as t:
+        counter = json.load(t)
+    pattern = r"\[CQ:image,file=([^,]+),subType=(\d+),type=(\w+),url=(.+)]"
+    match = re.search(pattern, str(message))
+    if match:
+        file_id = match.group(1)
+        sub_type = int(match.group(2))
+        type = match.group(3)
+        url = match.group(4)
+        url = re.sub("amp;","",url)
+
+        send_message = str(message)
+        message = file_id
+        counter["repeat_message"]["url"] = url
+        counter["repeat_message"]["type"] = "img"
+
     else:
-        counter = 0
+        counter["repeat_message"]["type"] = "text"
+
+    if counter["repeat_message"]["counter"] == 0:
+        counter["repeat_message"]["counter"] += 1
+        counter["repeat_message"]["last_message"] = str(message)
+    elif counter["repeat_message"]["last_message"] == str(message):
+        counter["repeat_message"]["counter"] += 1
+        if counter["repeat_message"]["counter"] == 3:
+            if counter["repeat_message"]["type"] == "text":
+                await counter_detector.send(str(message))
+            else:
+                await counter_detector.send(Message([
+                    MessageSegment("image", {
+                        "file": url
+                    })
+                ]))
+    else:
+        counter["repeat_message"]["counter"] = 1
+        counter["repeat_message"]["last_message"] = str(message)
+    with open('src/resources/counter.json','w') as t:
+        json.dump(counter,t)
+    
